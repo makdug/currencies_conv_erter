@@ -101,10 +101,50 @@ MONGO_DB=currency_converter
 | `GET` | `/api/operations?limit=50` | Журнал конвертаций. |
 | `GET` | `/api/health` | Состояние сервиса и хранилища. |
 
-Пример:
+Примеры запросов:
 
 ```bash
 curl "http://localhost:8008/api/convert?from=USD&to=EUR&amount=100"
+curl "http://localhost:8008/api/operations?limit=10"
+curl "http://localhost:8008/api/health"
+```
+
+Пример ответа `/api/convert`:
+
+```json
+{
+  "from": "USD",
+  "to": "EUR",
+  "amount": 100.0,
+  "rate": 0.91675,
+  "result": 91.675,
+  "path": ["USD", "EUR"],
+  "as_of": null,
+  "fetched_at": "2026-11-24T12:33:04.296697Z",
+  "stale": false,
+  "source": "csv_intraday",
+  "operation_id": "8a9cce4a8ebb48c6a611bd4b9e5b5c04"
+}
+```
+
+Пример ответа `/api/operations`:
+
+```json
+{
+  "operations": [
+    {
+      "id": "8a9cce4a8ebb48c6a611bd4b9e5b5c04",
+      "timestamp": "2026-11-24T12:33:04.297246Z",
+      "from": "USD",
+      "to": "EUR",
+      "amount": 100.0,
+      "rate": 0.91675,
+      "result": 91.675,
+      "source": "csv_intraday",
+      "stale": false
+    }
+  ]
+}
 ```
 
 Готовая коллекция Postman лежит в
