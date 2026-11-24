@@ -22,9 +22,14 @@ def test_csv_provider_loads_and_reads(tmp_path):
     assert provider.fetch_daily("USDEUR", 7) == [
         {"date": "csv", "rate": 0.9}
     ]
+    assert provider.fetch_intraday("EURUSD")["rate"] == pytest.approx(1 / 0.9)
+    eur_usd_point = provider.fetch_daily("EURUSD", 7)[0]
+    assert eur_usd_point["date"] == "csv"
+    assert eur_usd_point["rate"] == pytest.approx(1 / 0.9)
+    assert provider.fetch_intraday("EURGBP")["rate"] == pytest.approx(0.8 / 0.9)
     with pytest.raises(ProviderError, match="no_data"):
-        provider.fetch_intraday("EURUSD")
-    assert provider.fetch_daily("EURUSD", 7) == []
+        provider.fetch_intraday("JPYCHF")
+    assert provider.fetch_daily("JPYCHF", 7) == []
 
 
 def test_csv_provider_missing_file(tmp_path):

@@ -1,5 +1,7 @@
 # Конвертер валют
 
+[![CI](https://github.com/makdug/currencies_conv_erter/actions/workflows/ci.yml/badge.svg)](https://github.com/makdug/currencies_conv_erter/actions/workflows/ci.yml)
+
 Учебный dashboard на Flask: конвертер валют по актуальному курсу, таблица всех
 поддерживаемых валют, график за 7 дней и журнал операций.
 
@@ -30,9 +32,25 @@
 `currency/rates.csv`. Если Massive недоступен, CSV используется как резервный
 источник. Формат файла: `base,quote,rate`.
 
+CSV — это снимок курсов, а не временной ряд. Поэтому график по CSV показывает
+одну точку, а не 7 дней. Провайдер умеет считать обратные пары и кросс-курсы
+через USD, поэтому график работает и для пар, которых нет в файле напрямую.
+
 Бесплатный тариф Massive ограничивает частоту запросов (около 5 в минуту),
 поэтому в проекте есть TTL-кэш. TTL (time to live) — время жизни кэша: пока
 оно не истекло, данные берутся из локального хранилища, а не из API.
+
+## Время и расписание рынка
+
+Форекс — не одна биржа, а внебиржевой рынок. Он работает 24 часа в сутки
+с понедельника по пятницу. Открытие — в понедельник ночью, закрытие — в
+субботу ночью по московскому времени. Точное время сдвигается на час при
+переходе США на летнее и зимнее время.
+
+В dashboard все даты и время показываются по Москве (МСК). Поле «Обновлено»
+означает, когда сервер скачал данные, а «данные от» — время последней дневной
+свечи. Эти значения могут отличаться: рынок в выходные закрыт, поэтому сервер
+получает последнее доступное закрытие.
 
 ## Быстрый старт
 
@@ -59,6 +77,17 @@ docker compose up --build
 
 В `docker-compose.yml` поднимаются приложение и MongoDB. Если MongoDB не нужна,
 уберите `MONGO_URL` из окружения приложения.
+
+### Логика без HTTP
+
+`main.py` показывает работу классов без серверной обвязки:
+
+```bash
+RATES_SOURCE=csv python main.py
+```
+
+В PyCharm этот файл можно запустить через **Run** или **Debug**. Точки останова
+удобно ставить в `currency/service.py` и `currency/csv_provider.py`.
 
 ## MongoDB
 
@@ -101,10 +130,117 @@ MONGO_DB=currency_converter
 | `GET` | `/api/operations?limit=50` | Журнал конвертаций. |
 | `GET` | `/api/health` | Состояние сервиса и хранилища. |
 
-Пример:
+Примеры запросов:
 
 ```bash
 curl "http://localhost:8008/api/convert?from=USD&to=EUR&amount=100"
+curl "http://localhost:8008/api/operations?limit=10"
+curl "http://localhost:8008/api/health"
+```
+
+Пример ответа `/api/convert`:
+
+```json
+{
+  "from": "USD",
+  "to": "EUR",
+  "amount": 100.0,
+  "rate": 0.91675,
+  "result": 91.675,
+  "path": ["USD", "EUR"],
+  "as_of": null,
+  "fetched_at": "2026-11-24T12:33:04.296697Z",
+  "stale": false,
+  "source": "csv_intraday",
+  "operation_id": "8a9cce4a8ebb48c6a611bd4b9e5b5c04"
+}
+```
+
+Пример ответа `/api/operations`:
+
+```json
+{
+  "operations": [
+    {
+      "id": "8a9cce4a8ebb48c6a611bd4b9e5b5c04",
+      "timestamp": "2026-11-24T12:33:04.297246Z",
+      "from": "USD",
+      "to": "EUR",
+      "amount": 100.0,
+      "rate": 0.91675,
+      "result": 91.675,
+      "source": "csv_intraday",
+      "stale": false
+    }
+  ]
+}
+```
+
+Пример ответа `/api/currencies` (сокращено):
+
+```json
+{
+  "currencies": [
+    {
+      "code": "AED",
+      "name_en": "United Arab Emirates dirham",
+      "name_ru": "Дирхам ОАЭ",
+      "symbol": "د.إ"
+    }
+  ]
+}
+```
+
+Пример ответа `/api/rates?base=USD` (сокращено):
+
+```json
+{
+  "base": "USD",
+  "rates": {
+    "USD": 1.0,
+    "EUR": 0.91675,
+    "GBP": 0.7672182966
+  },
+  "as_of": null,
+  "fetched_at": "2026-11-24T12:36:48.413920Z",
+  "stale": false,
+  "source": "csv"
+}
+```
+
+Пример ответа `/api/history?from=USD&to=EUR&days=7`:
+
+```json
+{
+  "from": "USD",
+  "to": "EUR",
+  "days": 7,
+  "points": [
+    {
+      "date": "csv",
+      "rate": 0.91675
+    }
+  ],
+  "as_of": "csv",
+  "fetched_at": "2026-11-24T12:35:21.251995Z",
+  "stale": false,
+  "source": "csv"
+}
+```
+
+Пример ответа `/api/health`:
+
+```json
+{
+  "status": "ok",
+  "provider": "csv",
+  "cache": {
+    "backend": "json",
+    "has_rates": true,
+    "operations_count": 4,
+    "path": "data/cache.json"
+  }
+}
 ```
 
 Готовая коллекция Postman лежит в
@@ -129,13 +265,6 @@ flake8 .
 `pytest` проверяет логику, API, CSV-провайдер, JSON- и MongoDB-хранилища.
 Тесты Massive не ходят в настоящий API: провайдер подменяется фейком.
 `flake8` проверяет соблюдение PEP 8.
-
-Хук `hooks/pre-commit` запускает те же проверки перед коммитом. Чтобы включить
-его:
-
-```bash
-git config core.hooksPath hooks
-```
 
 ## Планы
 
@@ -163,8 +292,6 @@ static/
   styles.css        # стили
   vendor/           # Chart.js
 tests/              # pytest, coverage и requests-тесты
-hooks/
-  pre-commit        # flake8 + pytest --cov
 server.py           # Flask-приложение и API
 main.py             # пример запуска без HTTP
 ```
@@ -174,5 +301,7 @@ main.py             # пример запуска без HTTP
 - Данные Massive — не тиковый поток, а последняя доступная свеча.
 - В выходные и праздники используется последний торговый день.
 - Бесплатный тариф Massive не подходит для высокой нагрузки.
-- CSV-файл статический: его нужно обновлять отдельно.
+- CSV-файл статический: он не обновляется сам, потому что это локальный
+  резервный снимок, а не живой источник. Для автообновления нужен отдельный
+  планировщик (cron, GitHub Actions) или скрипт, который перезаписывает файл.
 - Проект учебный и не является инвестиционной рекомендацией.

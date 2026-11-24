@@ -28,6 +28,8 @@ const I18N = {
     intraday: "последняя сделка",
     reverse: "обратная пара",
     cross: "расчёт через USD",
+    csvSource: "CSV-резерв (файл)",
+    csvNote: "в CSV нет истории — показан один снимок курса",
     cached: "кэш",
     local: "локальный расчёт",
     notAvailable: "н/д",
@@ -79,6 +81,8 @@ const I18N = {
     intraday: "last trade",
     reverse: "reverse pair",
     cross: "cross via USD",
+    csvSource: "CSV fallback (file)",
+    csvNote: "CSV has no history — showing a single rate snapshot",
     cached: "cache",
     local: "local calculation",
     notAvailable: "n/a",
@@ -174,14 +178,23 @@ function formatTime(iso) {
   if (!iso) {
     return "";
   }
+  const locale = state.lang === "ru" ? "ru-RU" : "en-US";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "short",
+      timeZone: "UTC",
+    }).format(new Date(`${iso}T00:00:00Z`));
+  }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(state.lang === "ru" ? "ru-RU" : "en-US", {
+  const formatted = new Intl.DateTimeFormat(locale, {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Europe/Moscow",
   }).format(date);
+  return `${formatted} ${state.lang === "ru" ? "МСК" : "MSK"}`;
 }
 
 function currencyName(code) {
@@ -210,6 +223,10 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => replacements[character]);
 }
 
+function isCsvSource(meta) {
+  return Boolean(meta && (meta.source || "").startsWith("csv"));
+}
+
 function sourceLabel(meta) {
   if (!meta) {
     return "";
@@ -233,12 +250,19 @@ function sourceLabel(meta) {
   if (source === "local") {
     return t("local");
   }
+  if (source.startsWith("csv")) {
+    return t("csvSource");
+  }
   return source;
 }
 
 function noteText(meta) {
   if (!meta) {
     return "";
+  }
+  if (isCsvSource(meta)) {
+    const label = meta.stale ? t("cached") : t("csvSource");
+    return `${t("source")}: ${label}`;
   }
   const time = meta.as_of ? formatTime(meta.as_of) : "";
   const suffix = time ? ` · ${t("asOf")} ${time}` : "";
@@ -347,7 +371,12 @@ function renderConvert(data) {
 }
 
 function updateChartNote(meta) {
-  els.chartNote.textContent = meta ? noteText(meta) : "";
+  if (!meta) {
+    els.chartNote.textContent = "";
+    return;
+  }
+  const hint = isCsvSource(meta) ? ` · ${t("csvNote")}` : "";
+  els.chartNote.textContent = `${noteText(meta)}${hint}`;
 }
 
 function renderTable() {
@@ -435,10 +464,14 @@ function updateChart(points) {
   if (!state.chart) {
     return;
   }
-  state.chart.data.labels = state.chartPoints.map((point) => point.date);
+  state.chart.data.labels = state.chartPoints.map((point) =>
+    point.date === "csv" ? "CSV" : point.date,
+  );
   state.chart.data.datasets[0].data = state.chartPoints.map(
     (point) => point.rate,
   );
+  state.chart.data.datasets[0].pointRadius =
+    state.chartPoints.length < 2 ? 6 : 2;
   state.chart.options.scales.y.title.text = t("chartTitle");
   state.chart.update();
 }
