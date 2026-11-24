@@ -60,6 +60,17 @@ docker compose up --build
 В `docker-compose.yml` поднимаются приложение и MongoDB. Если MongoDB не нужна,
 уберите `MONGO_URL` из окружения приложения.
 
+### Логика без HTTP
+
+`main.py` показывает работу классов без серверной обвязки:
+
+```bash
+RATES_SOURCE=csv python main.py
+```
+
+В PyCharm этот файл можно запустить через **Run** или **Debug**. Точки останова
+удобно ставить в `currency/service.py` и `currency/csv_provider.py`.
+
 ## MongoDB
 
 По умолчанию данные хранятся в JSON-файле. Чтобы включить MongoDB, задайте:
