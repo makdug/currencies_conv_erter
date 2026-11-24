@@ -174,18 +174,22 @@ function formatTime(iso) {
   if (!iso) {
     return "";
   }
+  const locale = state.lang === "ru" ? "ru-RU" : "en-US";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "short",
+      timeZone: "UTC",
+    }).format(new Date(`${iso}T00:00:00Z`));
+  }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  const formatted = new Intl.DateTimeFormat(
-    state.lang === "ru" ? "ru-RU" : "en-US",
-    {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "Europe/Moscow",
-    },
-  ).format(date);
+  const formatted = new Intl.DateTimeFormat(locale, {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Europe/Moscow",
+  }).format(date);
   return `${formatted} ${state.lang === "ru" ? "МСК" : "MSK"}`;
 }
 

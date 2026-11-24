@@ -38,17 +38,34 @@ class CsvRateProvider:
         except (KeyError, TypeError, ValueError) as error:
             raise ProviderError("csv_invalid") from error
 
+    def _rate(self, pair):
+        row = self.pairs.get(pair)
+        if row:
+            return row["rate"]
+
+        base, quote = pair[:3], pair[3:6]
+        reverse = self.pairs.get(f"{quote}{base}")
+        if reverse:
+            return 1 / reverse["rate"]
+
+        if base != "USD" and quote != "USD":
+            base_rate = self._rate(f"{base}USD")
+            quote_rate = self._rate(f"{quote}USD")
+            if base_rate is not None and quote_rate is not None:
+                return base_rate / quote_rate
+        return None
+
     def fetch_grouped(self, day=None):
         return self.pairs
 
     def fetch_intraday(self, pair):
-        row = self.pairs.get(pair)
-        if not row:
+        rate = self._rate(pair)
+        if rate is None:
             raise ProviderError("no_data")
-        return {"rate": row["rate"], "timestamp": None}
+        return {"rate": rate, "timestamp": None}
 
     def fetch_daily(self, pair, days=7):
-        row = self.pairs.get(pair)
-        if not row:
+        rate = self._rate(pair)
+        if rate is None:
             return []
-        return [{"date": "csv", "rate": row["rate"]}]
+        return [{"date": "csv", "rate": rate}]
