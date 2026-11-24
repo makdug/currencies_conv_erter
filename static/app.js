@@ -178,10 +178,15 @@ function formatTime(iso) {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(state.lang === "ru" ? "ru-RU" : "en-US", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
+  const formatted = new Intl.DateTimeFormat(
+    state.lang === "ru" ? "ru-RU" : "en-US",
+    {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "Europe/Moscow",
+    },
+  ).format(date);
+  return `${formatted} ${state.lang === "ru" ? "МСК" : "MSK"}`;
 }
 
 function currencyName(code) {
