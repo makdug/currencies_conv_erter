@@ -40,6 +40,13 @@
       }
     },
     {
+      "name": "Operations",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/operations?limit=50"
+      }
+    },
+    {
       "name": "Health",
       "request": {
         "method": "GET",

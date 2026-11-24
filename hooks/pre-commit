@@ -1,4 +1,13 @@
 #!/bin/sh
 set -e
-flake8 .
-pytest --cov
+
+if [ -x .venv/bin/flake8 ] && [ -x .venv/bin/pytest ]; then
+  FLAKE8=.venv/bin/flake8
+  PYTEST=.venv/bin/pytest
+else
+  FLAKE8=flake8
+  PYTEST=pytest
+fi
+
+"$FLAKE8" .
+"$PYTEST" --cov
