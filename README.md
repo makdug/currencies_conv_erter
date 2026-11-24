@@ -1,5 +1,7 @@
 # Конвертер валют
 
+[![CI](https://github.com/makdug/currencies_conv_erter/actions/workflows/ci.yml/badge.svg)](https://github.com/makdug/currencies_conv_erter/actions/workflows/ci.yml)
+
 Учебный dashboard на Flask: конвертер валют по актуальному курсу, таблица всех
 поддерживаемых валют, график за 7 дней и журнал операций.
 
