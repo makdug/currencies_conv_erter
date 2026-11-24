@@ -12,6 +12,20 @@ class FakeCache:
 class FakeService:
     def __init__(self):
         self.cache = FakeCache()
+        self.provider_name = "massive"
+
+    def get_operations(self, limit=50):
+        if int(limit) < 1:
+            raise ServiceError("Плохой лимит", "invalid_limit", 400)
+        return [
+            {
+                "id": "op-1",
+                "from": "USD",
+                "to": "EUR",
+                "amount": 10,
+                "limit": int(limit),
+            }
+        ]
 
     def get_currencies(self):
         return [
@@ -104,6 +118,20 @@ def test_history_error(client):
     response = client.get("/api/history?from=BAD&to=EUR&days=7")
     assert response.status_code == 503
     assert response.get_json()["error"] == "history_unavailable"
+
+
+def test_operations(client):
+    response = client.get("/api/operations?limit=10")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["operations"][0]["id"] == "op-1"
+    assert payload["operations"][0]["limit"] == 10
+
+
+def test_operations_invalid_limit(client):
+    response = client.get("/api/operations?limit=0")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "invalid_limit"
 
 
 def test_health(client):

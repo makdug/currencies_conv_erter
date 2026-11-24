@@ -8,6 +8,8 @@ from currency.service import RateService
 
 
 class FakeProvider:
+    source_name = "massive"
+
     def __init__(self, pairs=None, intraday=None, daily=None, error=None):
         self.pairs = pairs or {}
         self.intraday = intraday

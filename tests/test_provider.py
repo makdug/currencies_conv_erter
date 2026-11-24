@@ -154,3 +154,50 @@ def test_get_raises_on_not_authorized():
     )
     with pytest.raises(ProviderError, match="not_authorized"):
         make_provider(session).fetch_grouped("2026-11-23")
+
+
+def test_provider_creates_default_session():
+    provider = MassiveProvider(api_key="test-key")
+    assert provider.session is not None
+
+
+def test_get_without_params():
+    session = FakeSession(FakeResponse(payload={"status": "OK"}))
+    provider = make_provider(session)
+    assert provider._get("/test") == {"status": "OK"}
+
+
+def test_fetch_grouped_without_results():
+    session = FakeSession(FakeResponse(payload={}))
+    provider = make_provider(session)
+    assert provider.fetch_grouped("2026-11-23") == {}
+
+
+def test_fetch_daily_skips_incomplete_rows():
+    session = FakeSession(
+        FakeResponse(
+            payload={
+                "results": [
+                    {"c": None, "t": 1},
+                    {"c": 1.1, "t": None},
+                    {"c": 1.2, "t": 1795305599999},
+                ]
+            }
+        )
+    )
+    provider = make_provider(session)
+    assert provider.fetch_daily("EURUSD", 7) == [
+        {"date": "2026-11-21", "rate": 1.2}
+    ]
+
+
+def test_fetch_daily_without_results():
+    session = FakeSession(FakeResponse(payload={}))
+    provider = make_provider(session)
+    assert provider.fetch_daily("EURUSD", 7) == []
+
+
+def test_get_raises_on_api_error_without_message():
+    session = FakeSession(FakeResponse(payload={"status": "ERROR"}))
+    with pytest.raises(ProviderError, match="api_error"):
+        make_provider(session).fetch_grouped("2026-11-23")
