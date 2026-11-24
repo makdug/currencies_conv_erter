@@ -158,6 +158,73 @@ curl "http://localhost:8008/api/health"
 }
 ```
 
+Пример ответа `/api/currencies` (сокращено):
+
+```json
+{
+  "currencies": [
+    {
+      "code": "AED",
+      "name_en": "United Arab Emirates dirham",
+      "name_ru": "Дирхам ОАЭ",
+      "symbol": "د.إ"
+    }
+  ]
+}
+```
+
+Пример ответа `/api/rates?base=USD` (сокращено):
+
+```json
+{
+  "base": "USD",
+  "rates": {
+    "USD": 1.0,
+    "EUR": 0.91675,
+    "GBP": 0.7672182966
+  },
+  "as_of": null,
+  "fetched_at": "2026-11-24T12:36:48.413920Z",
+  "stale": false,
+  "source": "csv"
+}
+```
+
+Пример ответа `/api/history?from=USD&to=EUR&days=7`:
+
+```json
+{
+  "from": "USD",
+  "to": "EUR",
+  "days": 7,
+  "points": [
+    {
+      "date": "csv",
+      "rate": 0.91675
+    }
+  ],
+  "as_of": "csv",
+  "fetched_at": "2026-11-24T12:35:21.251995Z",
+  "stale": false,
+  "source": "csv"
+}
+```
+
+Пример ответа `/api/health`:
+
+```json
+{
+  "status": "ok",
+  "provider": "csv",
+  "cache": {
+    "backend": "json",
+    "has_rates": true,
+    "operations_count": 4,
+    "path": "data/cache.json"
+  }
+}
+```
+
 Готовая коллекция Postman лежит в
 `postman/currency-converter.postman_collection.json`.
 
