@@ -1,6 +1,10 @@
-"""Небольшой пример запуска сервиса без HTTP-сервера."""
+"""Небольшой пример запуска логики без HTTP-сервера."""
 
-from server import create_service
+from dotenv import load_dotenv
+
+from currency.factory import create_service
+
+load_dotenv()
 
 
 def main():
@@ -11,6 +15,7 @@ def main():
     print("100 USD -> EUR:", service.convert("USD", "EUR", 100))
     history = service.get_history("USD", "EUR", 7)
     print("Точек истории:", len(history["points"]))
+    print("Операций в журнале:", len(service.get_operations()))
 
 
 if __name__ == "__main__":

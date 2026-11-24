@@ -1,12 +1,28 @@
 services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
   app:
     build: .
     ports:
       - "8008:8008"
     environment:
       MASSIVE_API_KEY: ${MASSIVE_API_KEY}
+      RATES_SOURCE: auto
+      CSV_RATES_PATH: /app/currency/rates.csv
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: currency_converter
       CACHE_PATH: /app/data/cache.json
       HOST: 0.0.0.0
       PORT: 8008
+    depends_on:
+      - mongo
     volumes:
       - ./data:/app/data
+
+volumes:
+  mongo_data:

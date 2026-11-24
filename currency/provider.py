@@ -10,6 +10,8 @@ class ProviderError(Exception):
 
 
 class MassiveProvider:
+    source_name = "massive"
+
     def __init__(self, api_key, base_url=MASSIVE_BASE_URL, timeout=20, session=None):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")

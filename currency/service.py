@@ -1,5 +1,6 @@
 import math
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from .catalog import CURRENCIES, CURRENCY_BY_CODE
 from .provider import ProviderError
@@ -8,7 +9,6 @@ from .provider import ProviderError
 class ServiceError(Exception):
     def __init__(self, message, code="bad_request", status=400):
         super().__init__(message)
-        self.message = message
         self.code = code
         self.status = status
 
@@ -28,6 +28,7 @@ class RateService:
         self,
         provider,
         cache,
+        fallback_provider=None,
         rates_ttl=300,
         intraday_ttl=60,
         history_ttl=300,
@@ -35,28 +36,42 @@ class RateService:
     ):
         self.provider = provider
         self.cache = cache
+        self.fallback_provider = fallback_provider
         self.rates_ttl = rates_ttl
         self.intraday_ttl = intraday_ttl
         self.history_ttl = history_ttl
         self.now = now
 
+    @property
+    def provider_name(self):
+        return getattr(self.provider, "source_name", "massive")
+
     def get_currencies(self):
         return CURRENCIES
+
+    def get_operations(self, limit=50):
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            raise ServiceError(
+                "Лимит должен быть числом", "invalid_limit"
+            ) from None
+        if limit < 1 or limit > 500:
+            raise ServiceError("Лимит должен быть от 1 до 500", "invalid_limit")
+        return self.cache.get_operations(limit)
 
     def get_rates(self, base="USD"):
         base = base.upper()
         if base not in CURRENCY_BY_CODE:
             raise ServiceError("Неизвестная базовая валюта", "invalid_base")
         snapshot, stale = self._load_rates()
-        rates = self._build_rates(snapshot["pairs"], base)
         return {
             "base": base,
-            "rates": rates,
+            "rates": self._build_rates(snapshot["pairs"], base),
             "as_of": snapshot.get("as_of"),
             "fetched_at": snapshot.get("fetched_at"),
-            "date": snapshot.get("date"),
             "stale": stale,
-            "source": "massive" if not stale else "cache",
+            "source": "cache" if stale else snapshot.get("source_name", "massive"),
         }
 
     def convert(self, source, target, amount):
@@ -79,7 +94,7 @@ class RateService:
 
         if source == target:
             moment = as_iso(self.now())
-            return {
+            result = {
                 "from": source,
                 "to": target,
                 "amount": amount,
@@ -91,9 +106,10 @@ class RateService:
                 "stale": False,
                 "source": "local",
             }
+            return self._record_operation(result)
 
         snapshot, stale = self._load_rates()
-        pair = f"{source}{target}"
+        pair = source + target
         intraday, intraday_stale = self._load_intraday(pair)
         pairs = dict(snapshot["pairs"])
         if intraday:
@@ -102,7 +118,12 @@ class RateService:
         if rate is None:
             raise ServiceError("Для этой пары нет курса", "no_rate", 404)
         used_intraday = intraday is not None
-        return {
+        if used_intraday:
+            source_name = intraday.get("source_name", "massive")
+            source_name = f"{source_name}_intraday"
+        else:
+            source_name = snapshot.get("source_name", "massive")
+        result = {
             "from": source,
             "to": target,
             "amount": amount,
@@ -110,7 +131,9 @@ class RateService:
             "result": amount * rate,
             "path": path,
             "as_of": (
-                intraday.get("as_of") if used_intraday else snapshot.get("as_of")
+                intraday.get("as_of")
+                if used_intraday
+                else snapshot.get("as_of")
             ),
             "fetched_at": (
                 intraday.get("fetched_at")
@@ -118,8 +141,9 @@ class RateService:
                 else snapshot.get("fetched_at")
             ),
             "stale": stale or intraday_stale,
-            "source": "massive_intraday" if used_intraday else "massive",
+            "source": source_name,
         }
+        return self._record_operation(result)
 
     def get_history(self, source, target, days=7):
         source = source.upper()
@@ -135,9 +159,7 @@ class RateService:
                 "Период должен быть числом", "invalid_days"
             ) from None
         if days < 1 or days > 31:
-            raise ServiceError(
-                "Период должен быть от 1 до 31 дня", "invalid_days"
-            )
+            raise ServiceError("Период должен быть от 1 до 31 дня", "invalid_days")
 
         if source == target:
             points = [
@@ -160,8 +182,7 @@ class RateService:
                 "source": "local",
             }
 
-        pair = f"{source}{target}"
-        history, stale = self._load_history(pair, days)
+        history, stale = self._load_history(source + target, days)
         return {
             "from": source,
             "to": target,
@@ -172,6 +193,22 @@ class RateService:
             "stale": stale,
             "source": history.get("source_name", "massive"),
         }
+
+    def _record_operation(self, result):
+        operation = {
+            "id": uuid4().hex,
+            "timestamp": as_iso(self.now()),
+            "from": result["from"],
+            "to": result["to"],
+            "amount": result["amount"],
+            "rate": result["rate"],
+            "result": result["result"],
+            "source": result["source"],
+            "stale": result["stale"],
+        }
+        self.cache.add_operation(operation)
+        result["operation_id"] = operation["id"]
+        return result
 
     def _load_rates(self):
         cached = self.cache.get_rates()
@@ -192,18 +229,31 @@ class RateService:
     def _fetch_rates(self):
         last_error = None
         for day in self._candidate_days():
+            pairs = None
+            source_name = "massive"
             try:
                 pairs = self.provider.fetch_grouped(day)
+                source_name = self.provider_name
             except ProviderError as error:
                 last_error = error
-                if str(error) in {
-                    "rate_limit",
-                    "network",
-                    "not_authorized",
-                    "http_401",
-                }:
-                    break
-                continue
+                if self.fallback_provider is not None:
+                    try:
+                        pairs = self.fallback_provider.fetch_grouped(day)
+                        source_name = getattr(
+                            self.fallback_provider, "source_name", "csv"
+                        )
+                    except ProviderError as fallback_error:
+                        last_error = fallback_error
+                        pairs = None
+                if pairs is None:
+                    if str(error) in {
+                        "rate_limit",
+                        "network",
+                        "not_authorized",
+                        "http_401",
+                    }:
+                        break
+                    continue
             if not pairs:
                 continue
             timestamps = [
@@ -222,6 +272,7 @@ class RateService:
                 "date": day.isoformat(),
                 "as_of": as_of,
                 "fetched_at": as_iso(self.now()),
+                "source_name": source_name,
                 "pairs": pairs,
             }
             self.cache.save_rates(snapshot)
@@ -243,25 +294,36 @@ class RateService:
         cached = self.cache.get_pair(pair)
         if cached and self._fresh(cached.get("fetched_at"), self.intraday_ttl):
             return cached, False
+        row = None
+        source_name = "massive"
         try:
             row = self.provider.fetch_intraday(pair)
-            timestamp = row.get("timestamp")
-            as_of = None
-            if timestamp:
-                as_of = as_iso(
-                    datetime.fromtimestamp(timestamp / 1000, timezone.utc)
-                )
-            data = {
-                "rate": row["rate"],
-                "as_of": as_of,
-                "fetched_at": as_iso(self.now()),
-            }
-            self.cache.save_pair(pair, data)
-            return data, False
+            source_name = self.provider_name
         except ProviderError:
-            if cached:
-                return cached, True
-            return None, False
+            if self.fallback_provider is not None:
+                try:
+                    row = self.fallback_provider.fetch_intraday(pair)
+                    source_name = getattr(
+                        self.fallback_provider, "source_name", "csv"
+                    )
+                except ProviderError:
+                    row = None
+        if row is None:
+            return cached, cached is not None
+        timestamp = row.get("timestamp")
+        as_of = None
+        if timestamp:
+            as_of = as_iso(
+                datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+            )
+        data = {
+            "rate": row["rate"],
+            "as_of": as_of,
+            "fetched_at": as_iso(self.now()),
+            "source_name": source_name,
+        }
+        self.cache.save_pair(pair, data)
+        return data, False
 
     def _load_history(self, pair, days):
         cache_key = f"{pair}:{days}"
@@ -276,37 +338,50 @@ class RateService:
             if cached:
                 return cached, True
             raise ServiceError(
-                "Не удалось получить историю по паре",
+                "Нет истории по этой паре",
                 "history_unavailable",
                 503,
             ) from error
 
-    def _fetch_history(self, pair, days):
-        source, target = pair[:3], pair[3:6]
+    def _daily_points(self, pair, days):
         try:
             points = self.provider.fetch_daily(pair, days)
             if points:
-                return {
-                    "points": points,
-                    "as_of": points[-1]["date"],
-                    "fetched_at": as_iso(self.now()),
-                    "source_name": "massive",
-                }
+                return points, self.provider_name
         except ProviderError:
             pass
+        if self.fallback_provider is not None:
+            try:
+                points = self.fallback_provider.fetch_daily(pair, days)
+                if points:
+                    return points, getattr(
+                        self.fallback_provider, "source_name", "csv"
+                    )
+            except ProviderError:
+                pass
+        return [], None
+
+    def _fetch_history(self, pair, days):
+        source, target = pair[:3], pair[3:6]
+        points, source_name = self._daily_points(pair, days)
+        if points:
+            return {
+                "points": points,
+                "as_of": points[-1]["date"],
+                "fetched_at": as_iso(self.now()),
+                "source_name": source_name,
+            }
 
         if "USD" not in (source, target):
-            try:
-                source_points = self.provider.fetch_daily(
-                    f"{source}USD", days
-                )
-                target_points = self.provider.fetch_daily(
-                    f"{target}USD", days
-                )
+            source_points, source_name = self._daily_points(
+                f"{source}USD", days
+            )
+            target_points, _ = self._daily_points(f"{target}USD", days)
+            if source_points and target_points:
                 target_by_date = {
                     point["date"]: point["rate"] for point in target_points
                 }
-                points = [
+                cross_points = [
                     {
                         "date": point["date"],
                         "rate": point["rate"] / target_by_date[point["date"]],
@@ -314,31 +389,26 @@ class RateService:
                     for point in source_points
                     if point["date"] in target_by_date
                 ]
-                if points:
+                if cross_points:
                     return {
-                        "points": points,
-                        "as_of": points[-1]["date"],
+                        "points": cross_points,
+                        "as_of": cross_points[-1]["date"],
                         "fetched_at": as_iso(self.now()),
-                        "source_name": "massive_cross",
+                        "source_name": f"{source_name}_cross",
                     }
-            except ProviderError:
-                pass
 
         reverse = target + source
-        try:
-            points = self.provider.fetch_daily(reverse, days)
-            if points:
-                return {
-                    "points": [
-                        {"date": point["date"], "rate": 1 / point["rate"]}
-                        for point in points
-                    ],
-                    "as_of": points[-1]["date"],
-                    "fetched_at": as_iso(self.now()),
-                    "source_name": "massive_reverse",
-                }
-        except ProviderError:
-            pass
+        points, source_name = self._daily_points(reverse, days)
+        if points:
+            return {
+                "points": [
+                    {"date": point["date"], "rate": 1 / point["rate"]}
+                    for point in points
+                ],
+                "as_of": points[-1]["date"],
+                "fetched_at": as_iso(self.now()),
+                "source_name": f"{source_name}_reverse",
+            }
 
         raise ProviderError("no_data")
 
@@ -358,31 +428,29 @@ class RateService:
         queue = [base]
         while queue:
             current = queue.pop(0)
-            for neighbor, rate in graph.get(current, {}).items():
-                if neighbor in rates:
+            for code, rate in graph.get(current, {}).items():
+                if code in rates:
                     continue
-                rates[neighbor] = rates[current] * rate
-                queue.append(neighbor)
+                rates[code] = rates[current] * rate
+                queue.append(code)
         return rates
 
     @staticmethod
     def _find_rate(pairs, source, target):
-        if source == target:
-            return 1.0, [source]
         graph = RateService._build_graph(pairs)
         queue = [(source, 1.0, [source])]
-        seen = {source}
+        visited = {source}
         while queue:
             current, rate, path = queue.pop(0)
-            for neighbor, edge in graph.get(current, {}).items():
-                if neighbor in seen:
+            for code, edge in graph.get(current, {}).items():
+                if code in visited:
                     continue
                 next_rate = rate * edge
-                next_path = path + [neighbor]
-                if neighbor == target:
+                next_path = path + [code]
+                if code == target:
                     return next_rate, next_path
-                seen.add(neighbor)
-                queue.append((neighbor, next_rate, next_path))
+                visited.add(code)
+                queue.append((code, next_rate, next_path))
         return None, None
 
     @staticmethod
