@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Конвертер валют</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div>
+        <h1 data-i18n="title">Конвертер валют</h1>
+        <p class="subtitle" data-i18n="subtitle">Актуальные курсы и конвертация</p>
+      </div>
+      <div class="header-actions">
+        <div class="lang-switch" aria-label="Language">
+          <button type="button" data-lang="ru" class="active">RU</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+        <button type="button" class="icon-button" id="refresh"
+                data-i18n-title="refresh" title="Обновить данные">↻</button>
+      </div>
+    </header>
+
+    <div class="status-row">
+      <span class="status status-loading" id="status">
+        <span class="dot"></span>
+        <span id="status-text" data-i18n="loading">Загрузка...</span>
+      </span>
+      <span class="updated" id="updated"></span>
+    </div>
+
+    <div class="error-banner" id="error" hidden></div>
+
+    <main class="grid">
+      <section class="card converter">
+        <div class="card-head">
+          <h2 data-i18n="converter">Конвертер</h2>
+        </div>
+
+        <label class="field">
+          <span data-i18n="amount">Сумма</span>
+          <input id="amount" type="number" min="0" step="any" value="100"
+                 inputmode="decimal">
+        </label>
+
+        <div class="currency-row">
+          <label class="field">
+            <span data-i18n="from">Из</span>
+            <select id="from"></select>
+          </label>
+          <button type="button" class="swap" id="swap" data-i18n-title="swap"
+                  title="Поменять валюты">⇄</button>
+          <label class="field">
+            <span data-i18n="to">В</span>
+            <select id="to"></select>
+          </label>
+        </div>
+
+        <div class="result">
+          <div class="result-value" id="result">—</div>
+          <div class="result-rate" id="rate"></div>
+          <div class="note" id="convert-note"></div>
+        </div>
+      </section>
+
+      <section class="card chart-card">
+        <div class="card-head">
+          <h2 data-i18n="chart">График за 7 дней</h2>
+          <span class="muted" id="chart-pair"></span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="note" id="chart-note"></div>
+      </section>
+
+      <section class="card table-card">
+        <div class="card-head">
+          <h2 data-i18n="rates">Курсы валют</h2>
+          <div class="table-actions">
+            <label class="field compact">
+              <span data-i18n="base">Базовая валюта</span>
+              <select id="base"></select>
+            </label>
+            <label class="search">
+              <input id="search" type="search" data-i18n-placeholder="search"
+                     placeholder="Поиск по коду или названию">
+            </label>
+            <label class="checkbox">
+              <input id="favorites-only" type="checkbox">
+              <span data-i18n="favorites">Избранное</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th data-i18n="code">Код</th>
+                <th data-i18n="currency">Валюта</th>
+                <th class="right" data-i18n="rate">Курс</th>
+              </tr>
+            </thead>
+            <tbody id="rates-body"></tbody>
+          </table>
+        </div>
+        <div class="note" id="table-note"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span data-i18n="footer">Данные: Massive. Не является финансовой рекомендацией.</span>
+    </footer>
+  </div>
+
+  <script>window.CURRENCIES = {{ currencies|tojson }};</script>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

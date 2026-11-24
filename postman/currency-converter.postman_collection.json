@@ -1,0 +1,50 @@
+{
+  "info": {
+    "name": "Currency Converter",
+    "description": "Локальный dashboard конвертера валют",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8008"
+    }
+  ],
+  "item": [
+    {
+      "name": "Currencies",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/currencies"
+      }
+    },
+    {
+      "name": "Rates",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/rates?base=USD"
+      }
+    },
+    {
+      "name": "Convert",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/convert?from=USD&to=EUR&amount=100"
+      }
+    },
+    {
+      "name": "History",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/history?from=USD&to=EUR&days=7"
+      }
+    },
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/health"
+      }
+    }
+  ]
+}

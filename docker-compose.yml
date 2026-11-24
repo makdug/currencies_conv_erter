@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8008:8008"
+    environment:
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY}
+      CACHE_PATH: /app/data/cache.json
+      HOST: 0.0.0.0
+      PORT: 8008
+    volumes:
+      - ./data:/app/data
